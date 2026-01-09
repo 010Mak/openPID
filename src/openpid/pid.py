@@ -1,21 +1,28 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Literal, Optional, Tuple, Union
 
 try:
     from . import _core
-except Exception as e:                    
+except Exception as e:
     raise ImportError(
         "openpid._core failed to import. "
         "If you're installing from source, ensure a C++ compiler is available and the build succeeded."
     ) from e
 
 
+def dataclass_compat(**kwargs):
+    if sys.version_info < (3, 10):
+        kwargs.pop("slots", None)
+    return dataclass(**kwargs)
+
+
 AntiWindupMode = Literal["none", "clamp", "conditional_integration", "back_calculation"]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass_compat(frozen=True, slots=True)
 class PIDConfig:
     kp: float
     ki: float
@@ -36,7 +43,7 @@ class PIDConfig:
     max_dt_for_integration: float = 0.5
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass_compat(frozen=True, slots=True)
 class Telemetry:
     error: float
     p: float
@@ -75,7 +82,7 @@ class PID:
         if cfg.max_dt_for_integration <= 0:
             raise ValueError("max_dt_for_integration must be > 0")
 
-        c = _core.PidConfig()                                                              
+        c = _core.PidConfig()
         c.kp = float(cfg.kp)
         c.ki = float(cfg.ki)
         c.kd = float(cfg.kd)
@@ -129,6 +136,5 @@ class PID:
             self._last = telem
             return telem.u, telem
 
-                                                    
         u = self._ctrl.step_u(float(setpoint), float(measurement), float(dt))
         return float(u)
