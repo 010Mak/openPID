@@ -18,6 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up QEMU (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -28,16 +34,63 @@ jobs:
 
       - name: Build wheels
         env:
-
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-*"
-
-          CIBW_SKIP: "pp*"
 
           CIBW_TEST_REQUIRES: "pytest"
           CIBW_TEST_COMMAND: "python -m pytest -q {project}/tests"
+
+          CIBW_ARCHS_WINDOWS: "AMD64"
+
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ARCHS_LINUX: "x86_64 aarch64"
         run: python -m cibuildwheel --output-dir wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
           name: wheelhouse-${{ matrix.os }}
-          path: wheelhouse/*
+          path: wheelhouse/*.whl
+
+  build_sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build sdist
+        run: |
+          python -m pip install -U pip build
+          python -m build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI (Trusted Publishing)
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare upload dir
+        run: |
+          mkdir -p upload
+          find artifacts -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} upload/ \;
+          ls -la upload
+
+      - name: Publish
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: upload
